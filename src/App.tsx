@@ -403,8 +403,11 @@ function AppContent() {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (isPrimFocused && primSuggestionIndex >= 0 && primarySuggestions[primSuggestionIndex]) {
+        const s = primarySuggestions[primSuggestionIndex];
+        if (s.startsWith('!RED:')) return; // Block selecting the red invalid word
+        const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
         const parts = primarySearchInput.split(' ');
-        parts[parts.length - 1] = primarySuggestions[primSuggestionIndex];
+        parts[parts.length - 1] = actualWord;
         setPrimarySearchInput(parts.join(' ') + ' ');
         setPrimSuggestionIndex(-1);
         return;
@@ -426,8 +429,11 @@ function AppContent() {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (isSecFocused && secSuggestionIndex >= 0 && secondarySuggestions[secSuggestionIndex]) {
+        const s = secondarySuggestions[secSuggestionIndex];
+        if (s.startsWith('!RED:')) return; // Block selecting the red invalid word
+        const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
         const parts = secondarySearchInput.split(' ');
-        parts[parts.length - 1] = secondarySuggestions[secSuggestionIndex];
+        parts[parts.length - 1] = actualWord;
         setSecondarySearchInput(parts.join(' ') + ' ');
         setSecSuggestionIndex(-1);
         return;
@@ -1239,7 +1245,6 @@ function AppContent() {
 
     const previousWords = parts.slice(0, -1).filter(Boolean);
 
-    // Smart Context: Filter raw rows using previously typed words to predict the next word
     let contextRows = allRows;
     if (previousWords.length > 0) {
       contextRows = allRows.filter(row => {
@@ -1248,35 +1253,56 @@ function AppContent() {
       });
     }
 
-    let contextBlob = '';
-    const maxRows = Math.min(contextRows.length, 100);
+    if (previousWords.length > 0 && contextRows.length === 0) return [];
+
+    const contextWordsMap = new Map<string, string>();
+    const allHintsSet = new Set<string>();
+    const maxRows = Math.min(contextRows.length, 150); 
+    
     for (let i = 0; i < maxRows; i++) {
-      contextBlob += Object.values(contextRows[i]).map(v => Array.isArray(v) ? v.join(' ') : (typeof v === 'object' && v !== null ? '' : String(v || ''))).join(' ') + ' ';
+      const rowValues = Object.values(contextRows[i]);
+      rowValues.forEach(val => {
+        const text = Array.isArray(val) ? val.join(' ') : String(val || '');
+        const tokens = text.toLowerCase().split(/[\s,()[\]{}"'”’“‘\-_]+/).filter(w => w.length > 1);
+        tokens.forEach(t => {
+          if (previousWords.length > 0 && !previousWords.some(pw => pw.toLowerCase() === t)) {
+              allHintsSet.add(t);
+          }
+          if (t.includes(lwLower)) {
+            const globalMatch = dictionary.find(d => d.word.toLowerCase() === t);
+            contextWordsMap.set(t, globalMatch ? globalMatch.word : t);
+          }
+        });
+      });
     }
-    contextBlob = contextBlob.toLowerCase();
 
-    const matches = dictionary.filter(entry => entry.word.toLowerCase().includes(lwLower) && entry.word.toLowerCase() !== lwLower);
+    const matches = Array.from(contextWordsMap.values());
+    
+    // Color-Coded Visual Hints
+    if (matches.length === 0 && previousWords.length > 0 && allHintsSet.size > 0) {
+      const allHints = Array.from(allHintsSet).map(h => {
+         const g = dictionary.find(d => d.word.toLowerCase() === h);
+         return g ? g.word : h;
+      });
+      let hints = [];
+      if (/\d/.test(lwLower)) {
+        hints = allHints.filter(w => /\d/.test(w)).slice(0, 5);
+      }
+      if (hints.length === 0) {
+        hints = allHints.slice(0, 5);
+      }
+      return [`!RED:${lastWord}`, ...hints.map(h => `!GREEN:${h}`)];
+    }
 
-    return matches.sort((aEntry, bEntry) => {
-      const aLower = aEntry.word.toLowerCase();
-      const bLower = bEntry.word.toLowerCase();
-
-      const aInContext = contextBlob.includes(aLower);
-      const bInContext = contextBlob.includes(bLower);
-      if (aInContext && !bInContext) return -1;
-      if (!aInContext && bInContext) return 1;
-
-      const aStarts = aLower.startsWith(lwLower) || aLower.includes('-' + lwLower) || aLower.includes('_' + lwLower);
-      const bStarts = bLower.startsWith(lwLower) || bLower.includes('-' + lwLower) || bLower.includes('_' + lwLower);
+    return matches.sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+      const aStarts = aLower.startsWith(lwLower);
+      const bStarts = bLower.startsWith(lwLower);
       if (aStarts && !bStarts) return -1;
       if (!aStarts && bStarts) return 1;
-
-      if (aEntry.minColIndex !== bEntry.minColIndex) {
-        return aEntry.minColIndex - bEntry.minColIndex;
-      }
-
-      return aEntry.word.localeCompare(bEntry.word);
-    }).map(entry => entry.word).slice(0, 8);
+      return a.localeCompare(b);
+    }).slice(0, 8);
   };
 
   const primarySuggestions = useMemo(() => getSuggestions(primarySearchInput, primaryDictionary, activeRows), [primarySearchInput, primaryDictionary, activeRows]);
@@ -1931,11 +1957,30 @@ function AppContent() {
                     {!primarySearchInput && primarySearchTags.length === 0 && <div className="absolute inset-y-0 left-0 flex items-center pl-0 pointer-events-none text-gray-400 text-sm whitespace-nowrap">🔍 Search Data {state.activePage ? <>For "<strong>{state.activePage}</strong>"</> : ""}</div>}
                     {isPrimFocused && primarySuggestions.length > 0 && (
                       <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-md z-[100] max-h-[250px] overflow-y-auto">
-                        {primarySuggestions.map((s, i) => (
-                          <div key={i} className={`px-3 py-2 text-[13px] text-[#217346] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === primSuggestionIndex ? 'bg-green-100' : 'hover:bg-green-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = primarySearchInput.split(' '); parts[parts.length - 1] = s; setPrimarySearchInput(parts.join(' ') + ' '); primaryInputRef.current?.focus(); }}>
-                            {highlightSuggestion(s, primarySearchInput)}
-                          </div>
-                        ))}
+                        {primarySuggestions.map((s, i) => {
+                          if (s.startsWith('!RED:')) {
+                            return (
+                              <div key={i} className="px-3 py-2 text-[13px] text-red-500 bg-red-50 font-bold border-b border-gray-100 cursor-not-allowed line-through opacity-80 flex justify-between">
+                                <span>{s.replace('!RED:', '')}</span>
+                                <span className="text-[10px] text-red-400 font-normal uppercase tracking-wider">Not Found</span>
+                              </div>
+                            );
+                          }
+                          if (s.startsWith('!GREEN:')) {
+                            const word = s.replace('!GREEN:', '');
+                            return (
+                              <div key={i} className={`px-3 py-2 text-[13px] text-green-700 font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === primSuggestionIndex ? 'bg-green-200' : 'bg-green-50 hover:bg-green-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = primarySearchInput.split(' '); parts[parts.length - 1] = word; setPrimarySearchInput(parts.join(' ') + ' '); primaryInputRef.current?.focus(); }}>
+                                <span>{word}</span>
+                                <span className="text-[10px] text-green-600 font-normal uppercase tracking-wider">Available</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={i} className={`px-3 py-2 text-[13px] text-[#217346] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === primSuggestionIndex ? 'bg-green-100' : 'hover:bg-green-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = primarySearchInput.split(' '); parts[parts.length - 1] = s; setPrimarySearchInput(parts.join(' ') + ' '); primaryInputRef.current?.focus(); }}>
+                              {highlightSuggestion(s, primarySearchInput)}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1982,11 +2027,30 @@ function AppContent() {
                     {!secondarySearchInput && secondarySearchTags.length === 0 && <div className="absolute inset-y-0 left-0 flex items-center pl-0 pointer-events-none text-gray-400 text-sm whitespace-nowrap">🔍 Search Data For "<strong>{activeConfig.secondarySearchPage}</strong>" (Secondary Search)</div>}
                     {isSecFocused && secondarySuggestions.length > 0 && (
                       <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-md z-[100] max-h-[250px] overflow-y-auto">
-                        {secondarySuggestions.map((s, i) => (
-                          <div key={i} className={`px-3 py-2 text-[13px] text-[#2b579a] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === secSuggestionIndex ? 'bg-blue-100' : 'hover:bg-blue-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = s; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
-                            {highlightSuggestion(s, secondarySearchInput)}
-                          </div>
-                        ))}
+                        {secondarySuggestions.map((s, i) => {
+                          if (s.startsWith('!RED:')) {
+                            return (
+                              <div key={i} className="px-3 py-2 text-[13px] text-red-500 bg-red-50 font-bold border-b border-gray-100 cursor-not-allowed line-through opacity-80 flex justify-between">
+                                <span>{s.replace('!RED:', '')}</span>
+                                <span className="text-[10px] text-red-400 font-normal uppercase tracking-wider">Not Found</span>
+                              </div>
+                            );
+                          }
+                          if (s.startsWith('!GREEN:')) {
+                            const word = s.replace('!GREEN:', '');
+                            return (
+                              <div key={i} className={`px-3 py-2 text-[13px] text-green-700 font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === secSuggestionIndex ? 'bg-green-200' : 'bg-green-50 hover:bg-green-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = word; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
+                                <span>{word}</span>
+                                <span className="text-[10px] text-green-600 font-normal uppercase tracking-wider">Available</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={i} className={`px-3 py-2 text-[13px] text-[#2b579a] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === secSuggestionIndex ? 'bg-blue-100' : 'hover:bg-blue-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = s; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
+                              {highlightSuggestion(s, secondarySearchInput)}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
