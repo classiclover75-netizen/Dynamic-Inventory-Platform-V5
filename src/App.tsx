@@ -32,48 +32,6 @@ const initialConfig: PageConfig = {
   ]
 };
 
-export type DictEntry = { word: string; minColIndex: number };
-
-const extractDictionary = (rows: RowData[], columns: Column[]): DictEntry[] => {
-  const uniqueWords = new Map<string, DictEntry>();
-  rows.forEach(row => {
-    columns.forEach((col, colIndex) => {
-      if (col.key !== 'sr' && col.type !== 'image' && col.type !== 'file') {
-        const val = row[col.key];
-        if (val) {
-          const text = Array.isArray(val) ? val.join(' ') : String(val);
-          const cleanText = text.replace(/&nbsp;/g, ' ').replace(/<[^>]*>?/gm, ' ');
-          const tokens = cleanText.split(/[\s,()[\]{}"'”’“‘]+/).filter(w => w.trim().length > 1);
-          
-          const updateDict = (key: string, original: string) => {
-            const existing = uniqueWords.get(key);
-            if (!existing) {
-              uniqueWords.set(key, { word: original, minColIndex: colIndex });
-            } else if (colIndex < existing.minColIndex) {
-              existing.minColIndex = colIndex; // Keep the highest priority (lowest index) column
-            }
-          };
-
-          for (let i = 0; i < tokens.length; i++) {
-            const t = tokens[i].trim();
-            const lw = t.toLowerCase();
-            updateDict(lw, t);
-            
-            if (t.includes('-') || t.includes('_')) {
-              const subParts = t.split(/[-_]+/);
-              for (const sp of subParts) {
-                const subT = sp.trim();
-                if (subT.length > 1) updateDict(subT.toLowerCase(), subT);
-              }
-            }
-          }
-        }
-      }
-    });
-  });
-  return Array.from(uniqueWords.values());
-};
-
 function AppContent() {
   const [state, setState] = useState<AppState>({
     pages: [],
@@ -97,7 +55,7 @@ function AppContent() {
   const [showHistoryLimitModal, setShowHistoryLimitModal] = useState(false);
   const [tempHistoryLimit, setTempHistoryLimit] = useState(10);
 
-  const [localSettings, setLocalSettings] = useState({ autoSuggestions: true, ghostHighlight: true });
+  const [localSettings, setLocalSettings] = useState({ ghostHighlight: true });
 
   useEffect(() => {
     const saved = localStorage.getItem('inventory_local_settings');
@@ -106,7 +64,7 @@ function AppContent() {
     }
   }, []);
 
-  const handleUpdateLocalSetting = (key: 'autoSuggestions' | 'ghostHighlight', value: boolean) => {
+  const handleUpdateLocalSetting = (key: 'ghostHighlight', value: boolean) => {
     const newSettings = { ...localSettings, [key]: value };
     setLocalSettings(newSettings);
     localStorage.setItem('inventory_local_settings', JSON.stringify(newSettings));
@@ -307,11 +265,6 @@ function AppContent() {
   const [primarySearchInput, setPrimarySearchInput] = useState('');
   const [secondarySearchInput, setSecondarySearchInput] = useState('');
 
-  const [isPrimFocused, setIsPrimFocused] = useState(false);
-  const [isSecFocused, setIsSecFocused] = useState(false);
-  const [primSuggestionIndex, setPrimSuggestionIndex] = useState(-1);
-  const [secSuggestionIndex, setSecSuggestionIndex] = useState(-1);
-
   const [primHist, setPrimHist] = useState<{entries: HistoryEntry[], pointer: number}>({ entries: [{ value: '', timestamp: Date.now() }], pointer: 0 });
   const [showPrimHist, setShowPrimHist] = useState(false);
   const primHistRef = useRef<HTMLDivElement>(null);
@@ -410,24 +363,8 @@ function AppContent() {
   };
 
   const handlePrimKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown' && isPrimFocused && primarySuggestions.length > 0) {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      setPrimSuggestionIndex(prev => (prev < primarySuggestions.length - 1 ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp' && isPrimFocused && primarySuggestions.length > 0) {
-      e.preventDefault();
-      setPrimSuggestionIndex(prev => (prev > 0 ? prev - 1 : -1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (isPrimFocused && primSuggestionIndex >= 0 && primarySuggestions[primSuggestionIndex]) {
-        const s = primarySuggestions[primSuggestionIndex];
-        if (s.startsWith('!RED:')) return; // Block selecting red text
-        const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
-        const parts = primarySearchInput.split(' ');
-        parts[parts.length - 1] = actualWord;
-        setPrimarySearchInput(parts.join(' ') + ' ');
-        setPrimSuggestionIndex(-1);
-        return;
-      }
       handleAddPrimaryTag();
     }
     if (e.key === 'Backspace' && primarySearchInput === '') setPrimarySearchTags(prev => prev.slice(0, -1));
@@ -436,24 +373,8 @@ function AppContent() {
   };
 
   const handleSecKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown' && isSecFocused && secondarySuggestions.length > 0) {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      setSecSuggestionIndex(prev => (prev < secondarySuggestions.length - 1 ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp' && isSecFocused && secondarySuggestions.length > 0) {
-      e.preventDefault();
-      setSecSuggestionIndex(prev => (prev > 0 ? prev - 1 : -1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (isSecFocused && secSuggestionIndex >= 0 && secondarySuggestions[secSuggestionIndex]) {
-        const s = secondarySuggestions[secSuggestionIndex];
-        if (s.startsWith('!RED:')) return; // Block selecting red text
-        const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
-        const parts = secondarySearchInput.split(' ');
-        parts[parts.length - 1] = actualWord;
-        setSecondarySearchInput(parts.join(' ') + ' ');
-        setSecSuggestionIndex(-1);
-        return;
-      }
       handleAddSecondaryTag();
     }
     if (e.key === 'Backspace' && secondarySearchInput === '') setSecondarySearchTags(prev => prev.slice(0, -1));
@@ -702,32 +623,6 @@ function AppContent() {
 
   const activeConfig = state.pageConfigs[state.activePage] || initialConfig;
   const activeRows = state.pageRows[state.activePage] || [];
-
-  const primaryDictionary = useMemo(() => extractDictionary(state.pageRows[state.activePage] || [], activeConfig?.columns || []), [state.pageRows, state.activePage, activeConfig]);
-  
-  const secondaryDictionary = useMemo(() => {
-    const secPage = activeConfig?.secondarySearchPage;
-    if (!secPage || !state.pageConfigs[secPage]) return [];
-    return extractDictionary(state.pageRows[secPage] || [], state.pageConfigs[secPage].columns);
-  }, [state.pageRows, state.pageConfigs, activeConfig?.secondarySearchPage]);
-
-  const highlightSuggestion = (suggestion: string, input: string) => {
-    const parts = input.split(' ');
-    const lastWord = parts[parts.length - 1];
-    if (!lastWord) return <>{suggestion}</>;
-    
-    const escaped = lastWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    const splitArr = suggestion.split(regex);
-    
-    return (
-      <>
-        {splitArr.map((part, i) => 
-          regex.test(part) ? <span key={i} className="font-extrabold text-black bg-yellow-300/40 rounded-[2px]">{part}</span> : <span key={i} className="opacity-80">{part}</span>
-        )}
-      </>
-    );
-  };
 
   const handleCreatePage = async (name: string, columns: Column[]) => {
     const newConfig = {
@@ -1252,113 +1147,6 @@ function AppContent() {
     }
     return sortRows(rows, secConfig.columns);
   }, [state.pageRows, state.pageConfigs, activeConfig.secondarySearchPage, secondarySearchQuery, secondarySearchTags]);
-
-  const getSuggestions = (input: string, dictionary: DictEntry[], allRows: RowData[], columns: Column[]) => {
-    const parts = input.split(' ');
-    const lastWord = parts[parts.length - 1];
-    if (lastWord.length < 2) return [];
-    const lwLower = lastWord.toLowerCase();
-
-    const previousWords = parts.slice(0, -1).filter(Boolean);
-
-    // 1. Filter rows matching previous words (Strictly via valid columns)
-    let contextRows = allRows;
-    if (previousWords.length > 0) {
-      contextRows = allRows.filter(row => {
-        const rowStr = columns.map(col => {
-          if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return '';
-          const val = row[col.key];
-          return Array.isArray(val) ? val.join(' ') : String(val || '');
-        }).join(' ').toLowerCase();
-        return previousWords.every(pw => rowStr.includes(pw.toLowerCase()));
-      });
-    }
-
-    if (previousWords.length > 0 && contextRows.length === 0) return [];
-
-    // 2. Build Context Blob for Sorting (Strictly via valid columns)
-    let contextBlob = '';
-    const maxRows = Math.min(contextRows.length, 150);
-    for (let i = 0; i < maxRows; i++) {
-      contextBlob += columns.map(col => {
-        if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return '';
-        const val = contextRows[i][col.key];
-        return Array.isArray(val) ? val.join(' ') : String(val || '');
-      }).join(' ').toLowerCase() + ' ';
-    }
-
-    const matches = dictionary.filter(entry => 
-      entry.word.toLowerCase().includes(lwLower) && 
-      entry.word.toLowerCase() !== lwLower &&
-      contextBlob.includes(entry.word.toLowerCase())
-    );
-
-    // 3. Smart Warning & Visual Hints (Strictly via valid columns, Text & Number Aware)
-    if (matches.length === 0 && previousWords.length > 0) {
-      const rawWords = new Set<string>();
-      for (let i = 0; i < maxRows; i++) {
-        columns.forEach(col => {
-          if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return;
-          const val = contextRows[i][col.key];
-          if (!val) return;
-          const text = Array.isArray(val) ? val.join(' ') : String(val);
-          const splitTokens = text.split(/[\s,()[\]{}"'”’“‘]+/);
-          splitTokens.forEach(t => {
-            const cleanT = t.trim();
-            if (cleanT.length > 1 && !previousWords.some(pw => pw.toLowerCase() === cleanT.toLowerCase())) {
-              rawWords.add(cleanT);
-              if (cleanT.includes('-') || cleanT.includes('_')) {
-                cleanT.split(/[-_]+/).forEach(sub => {
-                  const cleanSub = sub.trim();
-                  if (cleanSub.length > 1 && !previousWords.some(pw => pw.toLowerCase() === cleanSub.toLowerCase())) {
-                    rawWords.add(cleanSub);
-                  }
-                });
-              }
-            }
-          });
-        });
-      }
-
-      let allHints = Array.from(rawWords).sort((a, b) => a.length - b.length);
-      let hints = [];
-      
-      const hasNumbers = /\d/.test(lwLower);
-      if (hasNumbers) {
-        hints = allHints.filter(w => /\d/.test(w)).slice(0, 5); // Prioritize number hints
-      } else {
-        hints = allHints.filter(w => /[a-zA-Z]/.test(w)).slice(0, 5); // Prioritize text hints
-      }
-      
-      if (hints.length === 0) hints = allHints.slice(0, 5);
-
-      return [`!RED:${lastWord}`, ...hints.map(h => `!GREEN:${h}`)];
-    }
-
-    // 4. Return standard matches
-    return matches.sort((aEntry, bEntry) => {
-      const aLower = aEntry.word.toLowerCase();
-      const bLower = bEntry.word.toLowerCase();
-      const aStarts = aLower.startsWith(lwLower) || aLower.includes('-' + lwLower) || aLower.includes('_' + lwLower);
-      const bStarts = bLower.startsWith(lwLower) || bLower.includes('-' + lwLower) || bLower.includes('_' + lwLower);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
-      if (aEntry.minColIndex !== bEntry.minColIndex) return aEntry.minColIndex - bEntry.minColIndex;
-      return aEntry.word.localeCompare(bEntry.word);
-    }).map(entry => entry.word).slice(0, 8);
-  };
-
-  const primarySuggestions = useMemo(() => {
-    if (!localSettings.autoSuggestions) return [];
-    return getSuggestions(primarySearchInput, primaryDictionary, activeRows, activeConfig?.columns || []);
-  }, [primarySearchInput, primaryDictionary, activeRows, activeConfig, localSettings.autoSuggestions]);
-  
-  const secondarySuggestions = useMemo(() => {
-    if (!localSettings.autoSuggestions) return [];
-    const secRows = activeConfig.secondarySearchPage ? (state.pageRows[activeConfig.secondarySearchPage] || []) : [];
-    const secCols = activeConfig.secondarySearchPage ? (state.pageConfigs[activeConfig.secondarySearchPage]?.columns || []) : [];
-    return getSuggestions(secondarySearchInput, secondaryDictionary, secRows, secCols);
-  }, [secondarySearchInput, secondaryDictionary, activeConfig.secondarySearchPage, state.pageRows, state.pageConfigs, localSettings.autoSuggestions]);
 
     const highlightText = (text: string, tokens: string[], isGhost: boolean = false) => {
       const cleanText = text ? text.replace(/<!--[\s\S]*?-->/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/&nbsp;/gi, ' ') : '';
@@ -1940,15 +1728,6 @@ function AppContent() {
 
                 <div className="text-[11px] font-bold text-blue-600 border-b border-blue-100 mb-2 mt-3 pb-1.5 uppercase tracking-wide">Device Specific (This PC Only)</div>
                 <div className="flex items-center justify-between p-2 bg-[#f4f6f8] rounded mb-1">
-                  <span className="text-xs font-bold text-[#263238]">Auto-Suggestions</span>
-                  <button 
-                    className={`px-3 py-1 rounded text-[10px] font-bold border-0 cursor-pointer ${localSettings.autoSuggestions ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}`}
-                    onClick={() => handleUpdateLocalSetting('autoSuggestions', !localSettings.autoSuggestions)}
-                  >
-                    {localSettings.autoSuggestions ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-[#f4f6f8] rounded mb-1">
                   <span className="text-xs font-bold text-[#263238]">Highlight & Scroll (Paste)</span>
                   <button 
                     className={`px-3 py-1 rounded text-[10px] font-bold border-0 cursor-pointer ${localSettings.ghostHighlight ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}`}
@@ -2025,36 +1804,8 @@ function AppContent() {
                     ))}
                   </div>
                   <div className="relative flex-1 min-w-[100px]">
-                    <Input ref={primaryInputRef} key={`prim-${isAnyModalOpen}`} onBeforeInput={(e: any) => { if (e.nativeEvent && e.nativeEvent.inputType && e.nativeEvent.inputType.startsWith('history')) e.preventDefault(); }} className="border-0 focus:ring-0 text-sm w-full pr-8 h-8" value={primarySearchInput} readOnly={isAnyModalOpen} onChange={e => { setPrimarySearchInput(e.target.value); setPrimSuggestionIndex(-1); if (e.target.value && (activeConfig.independentSearchBars === false)) setSecondarySearchInput(''); }} onFocus={() => { setActiveSearchView('primary'); setIsPrimFocused(true); }} onBlur={() => setTimeout(() => setIsPrimFocused(false), 200)} onKeyDown={handlePrimKeyDown} />
+                    <Input ref={primaryInputRef} key={`prim-${isAnyModalOpen}`} onBeforeInput={(e: any) => { if (e.nativeEvent && e.nativeEvent.inputType && e.nativeEvent.inputType.startsWith('history')) e.preventDefault(); }} className="border-0 focus:ring-0 text-sm w-full pr-8 h-8" value={primarySearchInput} readOnly={isAnyModalOpen} onChange={e => { setPrimarySearchInput(e.target.value); if (e.target.value && (activeConfig.independentSearchBars === false)) setSecondarySearchInput(''); }} onFocus={() => { setActiveSearchView('primary'); }} onKeyDown={handlePrimKeyDown} />
                     {!primarySearchInput && primarySearchTags.length === 0 && <div className="absolute inset-y-0 left-0 flex items-center pl-0 pointer-events-none text-gray-400 text-sm whitespace-nowrap">🔍 Search Data {state.activePage ? <>For "<strong>{state.activePage}</strong>"</> : ""}</div>}
-                    {isPrimFocused && primarySuggestions.length > 0 && (
-                      <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-md z-[100] max-h-[250px] overflow-y-auto">
-                        {primarySuggestions.map((s, i) => {
-                          if (s.startsWith('!RED:')) {
-                            return (
-                              <div key={i} className="px-3 py-2 text-[13px] text-red-500 bg-red-50 font-bold border-b border-gray-100 cursor-not-allowed line-through opacity-80 flex justify-between">
-                                <span>{s.replace('!RED:', '')}</span>
-                                <span className="text-[10px] text-red-400 font-normal uppercase tracking-wider">Not Found</span>
-                              </div>
-                            );
-                          }
-                          if (s.startsWith('!GREEN:')) {
-                            const word = s.replace('!GREEN:', '');
-                            return (
-                              <div key={i} className={`px-3 py-2 text-[13px] text-green-700 font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === primSuggestionIndex ? 'bg-green-200' : 'bg-green-50 hover:bg-green-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = primarySearchInput.split(' '); parts[parts.length - 1] = word; setPrimarySearchInput(parts.join(' ') + ' '); primaryInputRef.current?.focus(); }}>
-                                <span>{word}</span>
-                                <span className="text-[10px] text-green-600 font-normal uppercase tracking-wider">Available</span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={i} className={`px-3 py-2 text-[13px] text-[#217346] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === primSuggestionIndex ? 'bg-green-100' : 'hover:bg-green-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = primarySearchInput.split(' '); parts[parts.length - 1] = s; setPrimarySearchInput(parts.join(' ') + ' '); primaryInputRef.current?.focus(); }}>
-                              {highlightSuggestion(s, primarySearchInput)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                   <button onClick={handleAddPrimaryTag} className="p-1 text-[#217346] hover:bg-green-100 rounded transition-colors border-0 bg-transparent cursor-pointer">
                     <Plus size={18} />
@@ -2095,36 +1846,8 @@ function AppContent() {
                     ))}
                   </div>
                   <div className="relative flex-1 min-w-[100px]">
-                    <Input ref={secondaryInputRef} key={`sec-${isAnyModalOpen}`} onBeforeInput={(e: any) => { if (e.nativeEvent && e.nativeEvent.inputType && e.nativeEvent.inputType.startsWith('history')) e.preventDefault(); }} className="border-0 focus:ring-0 text-sm w-full pr-8 h-8" value={secondarySearchInput} readOnly={isAnyModalOpen} onChange={e => { setSecondarySearchInput(e.target.value); setSecSuggestionIndex(-1); if (e.target.value && (activeConfig.independentSearchBars === false)) setPrimarySearchInput(''); }} onFocus={() => { setActiveSearchView('secondary'); setIsSecFocused(true); }} onBlur={() => setTimeout(() => setIsSecFocused(false), 200)} onKeyDown={handleSecKeyDown} />
+                    <Input ref={secondaryInputRef} key={`sec-${isAnyModalOpen}`} onBeforeInput={(e: any) => { if (e.nativeEvent && e.nativeEvent.inputType && e.nativeEvent.inputType.startsWith('history')) e.preventDefault(); }} className="border-0 focus:ring-0 text-sm w-full pr-8 h-8" value={secondarySearchInput} readOnly={isAnyModalOpen} onChange={e => { setSecondarySearchInput(e.target.value); if (e.target.value && (activeConfig.independentSearchBars === false)) setPrimarySearchInput(''); }} onFocus={() => { setActiveSearchView('secondary'); }} onKeyDown={handleSecKeyDown} />
                     {!secondarySearchInput && secondarySearchTags.length === 0 && <div className="absolute inset-y-0 left-0 flex items-center pl-0 pointer-events-none text-gray-400 text-sm whitespace-nowrap">🔍 Search Data For "<strong>{activeConfig.secondarySearchPage}</strong>" (Secondary Search)</div>}
-                    {isSecFocused && secondarySuggestions.length > 0 && (
-                      <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-md z-[100] max-h-[250px] overflow-y-auto">
-                        {secondarySuggestions.map((s, i) => {
-                          if (s.startsWith('!RED:')) {
-                            return (
-                              <div key={i} className="px-3 py-2 text-[13px] text-red-500 bg-red-50 font-bold border-b border-gray-100 cursor-not-allowed line-through opacity-80 flex justify-between">
-                                <span>{s.replace('!RED:', '')}</span>
-                                <span className="text-[10px] text-red-400 font-normal uppercase tracking-wider">Not Found</span>
-                              </div>
-                            );
-                          }
-                          if (s.startsWith('!GREEN:')) {
-                            const word = s.replace('!GREEN:', '');
-                            return (
-                              <div key={i} className={`px-3 py-2 text-[13px] text-[#2b579a] font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === secSuggestionIndex ? 'bg-blue-200' : 'bg-blue-50 hover:bg-blue-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = word; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
-                                <span>{word}</span>
-                                <span className="text-[10px] text-blue-600 font-normal uppercase tracking-wider">Available</span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={i} className={`px-3 py-2 text-[13px] text-[#2b579a] cursor-pointer font-bold border-b border-gray-100 last:border-b-0 ${i === secSuggestionIndex ? 'bg-blue-100' : 'hover:bg-blue-50'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = s; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
-                              {highlightSuggestion(s, secondarySearchInput)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                   <button onClick={handleAddSecondaryTag} className="p-1 text-[#2b579a] hover:bg-blue-100 rounded transition-colors border-0 bg-transparent cursor-pointer">
                     <Plus size={18} />
