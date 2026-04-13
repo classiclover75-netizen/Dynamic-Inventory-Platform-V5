@@ -1679,7 +1679,7 @@ function AppContent() {
           <div className="relative inline-block" ref={settingsRef}>
             <Button variant="dark" onClick={() => setShowTopSettings(!showTopSettings)}><Settings size={14} /> Settings</Button>
             {showTopSettings && (
-              <div className="absolute right-0 top-[calc(100%+6px)] w-[260px] bg-white border border-[#d7dde1] rounded-md shadow-xl p-2 z-15">
+              <div className="absolute right-0 top-[calc(100%+6px)] w-[260px] bg-white border border-[#d7dde1] rounded-md shadow-xl p-2 z-50">
                 <div className="text-[11px] font-bold text-[#607d8b] border-b border-[#eceff1] mb-2 pb-1.5 uppercase tracking-wide">Settings</div>
                 <div className="text-xs text-[#607d8b] px-1 pb-2 font-bold">
                   Active Page: <span className="text-gray-800">{state.activePage || 'No page selected'}</span>
