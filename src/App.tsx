@@ -1342,7 +1342,7 @@ function AppContent() {
           <thead>
             <tr>
               {!isSecondary && config.rowReorderEnabled && (
-                <th className={`sticky top-0 z-10 text-center p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0] w-[60px] bg-[#f3f3f3] data-[hovered-col=true]:bg-[#fce7f3]`}>
+                <th className={`sticky top-0 z-20 text-center p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0] w-[60px] bg-[#f3f3f3] data-[hovered-col=true]:bg-[#fce7f3]`}>
                   <input 
                     type="checkbox" 
                     className="cursor-pointer"
@@ -1366,7 +1366,7 @@ function AppContent() {
                 return (
                   <th 
                     key={col.key} 
-                    className={`sticky top-0 z-10 text-[14px] font-bold text-[#2f3d49] p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0] ${!col.width && col.key !== 'sr' ? defaultWidthClass : (col.key === 'sr' || col.type === 'image' ? 'text-center' : 'text-left')} bg-[#f3f3f3] data-[hovered-col=true]:bg-[#fce7f3]`}
+                    className={`sticky top-0 z-20 text-[14px] font-bold text-[#2f3d49] p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0] ${!col.width && col.key !== 'sr' ? defaultWidthClass : (col.key === 'sr' || col.type === 'image' ? 'text-center' : 'text-left')} bg-[#f3f3f3] data-[hovered-col=true]:bg-[#fce7f3]`}
                     style={finalWidthStyle}
                   >
                     <div className="flex items-center gap-1">
