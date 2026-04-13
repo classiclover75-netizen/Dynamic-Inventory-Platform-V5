@@ -97,6 +97,22 @@ function AppContent() {
   const [showHistoryLimitModal, setShowHistoryLimitModal] = useState(false);
   const [tempHistoryLimit, setTempHistoryLimit] = useState(10);
 
+  const [localSettings, setLocalSettings] = useState({ autoSuggestions: true, ghostHighlight: true });
+
+  useEffect(() => {
+    const saved = localStorage.getItem('inventory_local_settings');
+    if (saved) {
+      setLocalSettings(JSON.parse(saved));
+    }
+  }, []);
+
+  const handleUpdateLocalSetting = (key: 'autoSuggestions' | 'ghostHighlight', value: boolean) => {
+    const newSettings = { ...localSettings, [key]: value };
+    setLocalSettings(newSettings);
+    localStorage.setItem('inventory_local_settings', JSON.stringify(newSettings));
+    toast(`${key} updated for this device`);
+  };
+
   const handleClearEntireDB = async () => {
     const emptyState = {
       pages: [],
@@ -1332,13 +1348,17 @@ function AppContent() {
     }).map(entry => entry.word).slice(0, 8);
   };
 
-  const primarySuggestions = useMemo(() => getSuggestions(primarySearchInput, primaryDictionary, activeRows, activeConfig?.columns || []), [primarySearchInput, primaryDictionary, activeRows, activeConfig]);
+  const primarySuggestions = useMemo(() => {
+    if (!localSettings.autoSuggestions) return [];
+    return getSuggestions(primarySearchInput, primaryDictionary, activeRows, activeConfig?.columns || []);
+  }, [primarySearchInput, primaryDictionary, activeRows, activeConfig, localSettings.autoSuggestions]);
   
   const secondarySuggestions = useMemo(() => {
+    if (!localSettings.autoSuggestions) return [];
     const secRows = activeConfig.secondarySearchPage ? (state.pageRows[activeConfig.secondarySearchPage] || []) : [];
     const secCols = activeConfig.secondarySearchPage ? (state.pageConfigs[activeConfig.secondarySearchPage]?.columns || []) : [];
     return getSuggestions(secondarySearchInput, secondaryDictionary, secRows, secCols);
-  }, [secondarySearchInput, secondaryDictionary, activeConfig.secondarySearchPage, state.pageRows, state.pageConfigs]);
+  }, [secondarySearchInput, secondaryDictionary, activeConfig.secondarySearchPage, state.pageRows, state.pageConfigs, localSettings.autoSuggestions]);
 
     const highlightText = (text: string, tokens: string[], isGhost: boolean = false) => {
       const cleanText = text ? text.replace(/<!--[\s\S]*?-->/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/&nbsp;/gi, ' ') : '';
@@ -1430,11 +1450,13 @@ function AppContent() {
       wasPrimSearchActive.current = true;
     } else if (searchTokens.length === 0 && wasPrimSearchActive.current) {
       wasPrimSearchActive.current = false;
-      setGhostPrimTokens(prevPrimTokens.current);
-      setGhostPrimIds(latestPrimFilteredIds.current);
-      setTimeout(() => {
-        if (parentRef.current) parentRef.current.scrollTop = savedPrimScroll.current;
-      }, 100);
+      if (localSettings.ghostHighlight) {
+        setGhostPrimTokens(prevPrimTokens.current);
+        setGhostPrimIds(latestPrimFilteredIds.current);
+        setTimeout(() => {
+          if (parentRef.current) parentRef.current.scrollTop = savedPrimScroll.current;
+        }, 100);
+      }
     }
 
     // Secondary
@@ -1445,11 +1467,13 @@ function AppContent() {
       wasSecSearchActive.current = true;
     } else if (secondarySearchTokens.length === 0 && wasSecSearchActive.current) {
       wasSecSearchActive.current = false;
-      setGhostSecTokens(prevSecTokens.current);
-      setGhostSecIds(latestSecFilteredIds.current);
-      setTimeout(() => {
-        if (parentRef.current) parentRef.current.scrollTop = savedSecScroll.current;
-      }, 100);
+      if (localSettings.ghostHighlight) {
+        setGhostSecTokens(prevSecTokens.current);
+        setGhostSecIds(latestSecFilteredIds.current);
+        setTimeout(() => {
+          if (parentRef.current) parentRef.current.scrollTop = savedSecScroll.current;
+        }, 100);
+      }
     }
   }, [searchTokens.length, secondarySearchTokens.length]);
 
@@ -1913,6 +1937,26 @@ function AppContent() {
                 >
                   📂 Import Backup (JSON)
                 </button>
+
+                <div className="text-[11px] font-bold text-blue-600 border-b border-blue-100 mb-2 mt-3 pb-1.5 uppercase tracking-wide">Device Specific (This PC Only)</div>
+                <div className="flex items-center justify-between p-2 bg-[#f4f6f8] rounded mb-1">
+                  <span className="text-xs font-bold text-[#263238]">Auto-Suggestions</span>
+                  <button 
+                    className={`px-3 py-1 rounded text-[10px] font-bold border-0 cursor-pointer ${localSettings.autoSuggestions ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}`}
+                    onClick={() => handleUpdateLocalSetting('autoSuggestions', !localSettings.autoSuggestions)}
+                  >
+                    {localSettings.autoSuggestions ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between p-2 bg-[#f4f6f8] rounded mb-1">
+                  <span className="text-xs font-bold text-[#263238]">Highlight & Scroll (Paste)</span>
+                  <button 
+                    className={`px-3 py-1 rounded text-[10px] font-bold border-0 cursor-pointer ${localSettings.ghostHighlight ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}`}
+                    onClick={() => handleUpdateLocalSetting('ghostHighlight', !localSettings.ghostHighlight)}
+                  >
+                    {localSettings.ghostHighlight ? 'ON' : 'OFF'}
+                  </button>
+                </div>
 
                 <div className="text-[11px] font-bold text-red-600 border-b border-red-100 mb-2 mt-3 pb-1.5 uppercase tracking-wide">DANGER ZONE</div>
                 <button 
