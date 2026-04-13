@@ -55,7 +55,7 @@ function AppContent() {
   const [showHistoryLimitModal, setShowHistoryLimitModal] = useState(false);
   const [tempHistoryLimit, setTempHistoryLimit] = useState(10);
 
-  const [localSettings, setLocalSettings] = useState({ ghostHighlight: true });
+  const [localSettings, setLocalSettings] = useState({ ghostHighlight: false });
 
   useEffect(() => {
     const saved = localStorage.getItem('inventory_local_settings');
@@ -1728,7 +1728,7 @@ function AppContent() {
 
                 <div className="text-[11px] font-bold text-blue-600 border-b border-blue-100 mb-2 mt-3 pb-1.5 uppercase tracking-wide">Device Specific (This PC Only)</div>
                 <div className="flex items-center justify-between p-2 bg-[#f4f6f8] rounded mb-1">
-                  <span className="text-xs font-bold text-[#263238]">Highlight & Scroll (Paste)</span>
+                  <span className="text-xs font-bold text-[#263238]">Highlight Scroll Position</span>
                   <button 
                     className={`px-3 py-1 rounded text-[10px] font-bold border-0 cursor-pointer ${localSettings.ghostHighlight ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}`}
                     onClick={() => handleUpdateLocalSetting('ghostHighlight', !localSettings.ghostHighlight)}
