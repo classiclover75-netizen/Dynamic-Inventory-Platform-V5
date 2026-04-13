@@ -404,7 +404,7 @@ function AppContent() {
       e.preventDefault();
       if (isPrimFocused && primSuggestionIndex >= 0 && primarySuggestions[primSuggestionIndex]) {
         const s = primarySuggestions[primSuggestionIndex];
-        if (s.startsWith('!RED:')) return; // Block selecting the red invalid word
+        if (s.startsWith('!RED:')) return; // Block selecting red text
         const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
         const parts = primarySearchInput.split(' ');
         parts[parts.length - 1] = actualWord;
@@ -430,7 +430,7 @@ function AppContent() {
       e.preventDefault();
       if (isSecFocused && secSuggestionIndex >= 0 && secondarySuggestions[secSuggestionIndex]) {
         const s = secondarySuggestions[secSuggestionIndex];
-        if (s.startsWith('!RED:')) return; // Block selecting the red invalid word
+        if (s.startsWith('!RED:')) return; // Block selecting red text
         const actualWord = s.startsWith('!GREEN:') ? s.replace('!GREEN:', '') : s;
         const parts = secondarySearchInput.split(' ');
         parts[parts.length - 1] = actualWord;
@@ -1237,7 +1237,7 @@ function AppContent() {
     return sortRows(rows, secConfig.columns);
   }, [state.pageRows, state.pageConfigs, activeConfig.secondarySearchPage, secondarySearchQuery, secondarySearchTags]);
 
-  const getSuggestions = (input: string, dictionary: DictEntry[], allRows: RowData[]) => {
+  const getSuggestions = (input: string, dictionary: DictEntry[], allRows: RowData[], columns: Column[]) => {
     const parts = input.split(' ');
     const lastWord = parts[parts.length - 1];
     if (lastWord.length < 2) return [];
@@ -1245,72 +1245,100 @@ function AppContent() {
 
     const previousWords = parts.slice(0, -1).filter(Boolean);
 
+    // 1. Filter rows matching previous words (Strictly via valid columns)
     let contextRows = allRows;
     if (previousWords.length > 0) {
       contextRows = allRows.filter(row => {
-        const rowStr = Object.values(row).map(v => Array.isArray(v) ? v.join(' ') : (typeof v === 'object' && v !== null ? '' : String(v || ''))).join(' ').toLowerCase();
+        const rowStr = columns.map(col => {
+          if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return '';
+          const val = row[col.key];
+          return Array.isArray(val) ? val.join(' ') : String(val || '');
+        }).join(' ').toLowerCase();
         return previousWords.every(pw => rowStr.includes(pw.toLowerCase()));
       });
     }
 
     if (previousWords.length > 0 && contextRows.length === 0) return [];
 
-    const contextWordsMap = new Map<string, string>();
-    const allHintsSet = new Set<string>();
-    const maxRows = Math.min(contextRows.length, 150); 
-    
+    // 2. Build Context Blob for Sorting (Strictly via valid columns)
+    let contextBlob = '';
+    const maxRows = Math.min(contextRows.length, 150);
     for (let i = 0; i < maxRows; i++) {
-      const rowValues = Object.values(contextRows[i]);
-      rowValues.forEach(val => {
-        const text = Array.isArray(val) ? val.join(' ') : String(val || '');
-        const tokens = text.toLowerCase().split(/[\s,()[\]{}"'”’“‘\-_]+/).filter(w => w.length > 1);
-        tokens.forEach(t => {
-          if (previousWords.length > 0 && !previousWords.some(pw => pw.toLowerCase() === t)) {
-              allHintsSet.add(t);
-          }
-          if (t.includes(lwLower)) {
-            const globalMatch = dictionary.find(d => d.word.toLowerCase() === t);
-            contextWordsMap.set(t, globalMatch ? globalMatch.word : t);
-          }
-        });
-      });
+      contextBlob += columns.map(col => {
+        if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return '';
+        const val = contextRows[i][col.key];
+        return Array.isArray(val) ? val.join(' ') : String(val || '');
+      }).join(' ').toLowerCase() + ' ';
     }
 
-    const matches = Array.from(contextWordsMap.values());
-    
-    // Color-Coded Visual Hints
-    if (matches.length === 0 && previousWords.length > 0 && allHintsSet.size > 0) {
-      const allHints = Array.from(allHintsSet).map(h => {
-         const g = dictionary.find(d => d.word.toLowerCase() === h);
-         return g ? g.word : h;
-      });
+    const matches = dictionary.filter(entry => 
+      entry.word.toLowerCase().includes(lwLower) && 
+      entry.word.toLowerCase() !== lwLower &&
+      contextBlob.includes(entry.word.toLowerCase())
+    );
+
+    // 3. Smart Warning & Visual Hints (Strictly via valid columns, Text & Number Aware)
+    if (matches.length === 0 && previousWords.length > 0) {
+      const rawWords = new Set<string>();
+      for (let i = 0; i < maxRows; i++) {
+        columns.forEach(col => {
+          if (col.key === 'sr' || col.type === 'image' || col.type === 'file') return;
+          const val = contextRows[i][col.key];
+          if (!val) return;
+          const text = Array.isArray(val) ? val.join(' ') : String(val);
+          const splitTokens = text.split(/[\s,()[\]{}"'”’“‘]+/);
+          splitTokens.forEach(t => {
+            const cleanT = t.trim();
+            if (cleanT.length > 1 && !previousWords.some(pw => pw.toLowerCase() === cleanT.toLowerCase())) {
+              rawWords.add(cleanT);
+              if (cleanT.includes('-') || cleanT.includes('_')) {
+                cleanT.split(/[-_]+/).forEach(sub => {
+                  const cleanSub = sub.trim();
+                  if (cleanSub.length > 1 && !previousWords.some(pw => pw.toLowerCase() === cleanSub.toLowerCase())) {
+                    rawWords.add(cleanSub);
+                  }
+                });
+              }
+            }
+          });
+        });
+      }
+
+      let allHints = Array.from(rawWords).sort((a, b) => a.length - b.length);
       let hints = [];
-      if (/\d/.test(lwLower)) {
-        hints = allHints.filter(w => /\d/.test(w)).slice(0, 5);
+      
+      const hasNumbers = /\d/.test(lwLower);
+      if (hasNumbers) {
+        hints = allHints.filter(w => /\d/.test(w)).slice(0, 5); // Prioritize number hints
+      } else {
+        hints = allHints.filter(w => /[a-zA-Z]/.test(w)).slice(0, 5); // Prioritize text hints
       }
-      if (hints.length === 0) {
-        hints = allHints.slice(0, 5);
-      }
+      
+      if (hints.length === 0) hints = allHints.slice(0, 5);
+
       return [`!RED:${lastWord}`, ...hints.map(h => `!GREEN:${h}`)];
     }
 
-    return matches.sort((a, b) => {
-      const aLower = a.toLowerCase();
-      const bLower = b.toLowerCase();
-      const aStarts = aLower.startsWith(lwLower);
-      const bStarts = bLower.startsWith(lwLower);
+    // 4. Return standard matches
+    return matches.sort((aEntry, bEntry) => {
+      const aLower = aEntry.word.toLowerCase();
+      const bLower = bEntry.word.toLowerCase();
+      const aStarts = aLower.startsWith(lwLower) || aLower.includes('-' + lwLower) || aLower.includes('_' + lwLower);
+      const bStarts = bLower.startsWith(lwLower) || bLower.includes('-' + lwLower) || bLower.includes('_' + lwLower);
       if (aStarts && !bStarts) return -1;
       if (!aStarts && bStarts) return 1;
-      return a.localeCompare(b);
-    }).slice(0, 8);
+      if (aEntry.minColIndex !== bEntry.minColIndex) return aEntry.minColIndex - bEntry.minColIndex;
+      return aEntry.word.localeCompare(bEntry.word);
+    }).map(entry => entry.word).slice(0, 8);
   };
 
-  const primarySuggestions = useMemo(() => getSuggestions(primarySearchInput, primaryDictionary, activeRows), [primarySearchInput, primaryDictionary, activeRows]);
+  const primarySuggestions = useMemo(() => getSuggestions(primarySearchInput, primaryDictionary, activeRows, activeConfig?.columns || []), [primarySearchInput, primaryDictionary, activeRows, activeConfig]);
   
   const secondarySuggestions = useMemo(() => {
     const secRows = activeConfig.secondarySearchPage ? (state.pageRows[activeConfig.secondarySearchPage] || []) : [];
-    return getSuggestions(secondarySearchInput, secondaryDictionary, secRows);
-  }, [secondarySearchInput, secondaryDictionary, activeConfig.secondarySearchPage, state.pageRows]);
+    const secCols = activeConfig.secondarySearchPage ? (state.pageConfigs[activeConfig.secondarySearchPage]?.columns || []) : [];
+    return getSuggestions(secondarySearchInput, secondaryDictionary, secRows, secCols);
+  }, [secondarySearchInput, secondaryDictionary, activeConfig.secondarySearchPage, state.pageRows, state.pageConfigs]);
 
     const highlightText = (text: string, tokens: string[], isGhost: boolean = false) => {
       const cleanText = text ? text.replace(/<!--[\s\S]*?-->/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/&nbsp;/gi, ' ') : '';
@@ -2039,9 +2067,9 @@ function AppContent() {
                           if (s.startsWith('!GREEN:')) {
                             const word = s.replace('!GREEN:', '');
                             return (
-                              <div key={i} className={`px-3 py-2 text-[13px] text-green-700 font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === secSuggestionIndex ? 'bg-green-200' : 'bg-green-50 hover:bg-green-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = word; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
+                              <div key={i} className={`px-3 py-2 text-[13px] text-[#2b579a] font-bold border-b border-gray-100 cursor-pointer flex justify-between ${i === secSuggestionIndex ? 'bg-blue-200' : 'bg-blue-50 hover:bg-blue-100'}`} onMouseDown={(e) => { e.preventDefault(); const parts = secondarySearchInput.split(' '); parts[parts.length - 1] = word; setSecondarySearchInput(parts.join(' ') + ' '); secondaryInputRef.current?.focus(); }}>
                                 <span>{word}</span>
-                                <span className="text-[10px] text-green-600 font-normal uppercase tracking-wider">Available</span>
+                                <span className="text-[10px] text-blue-600 font-normal uppercase tracking-wider">Available</span>
                               </div>
                             );
                           }
