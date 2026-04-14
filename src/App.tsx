@@ -1234,13 +1234,13 @@ function AppContent() {
       return cleanHtml.replace(regex, match => `<span class="${highlightClass}">${match}</span>`);
     };
 
-  const searchTokens = [...primarySearchTags, currentSearch.trim()].flatMap(q => q.toLowerCase().split(/\s+/)).filter(Boolean);
-  const secondarySearchTokens = [...secondarySearchTags, secondarySearchQuery.trim()].flatMap(q => q.toLowerCase().split(/\s+/)).filter(Boolean);
+  const primaryQueries = [...primarySearchTags, currentSearch.trim()].filter(Boolean);
+  const secondaryQueries = [...secondarySearchTags, secondarySearchQuery.trim()].filter(Boolean);
 
   const isSecondaryActive = activeSearchView === 'secondary' && !!(activeConfig.secondarySearchPage && state.pageConfigs[activeConfig.secondarySearchPage]);
   const displayConfig = isSecondaryActive ? state.pageConfigs[activeConfig.secondarySearchPage!] : activeConfig;
   const displayRows = isSecondaryActive ? secondaryFilteredRows : filteredRows;
-  const displayTokens = isSecondaryActive ? secondarySearchTokens : searchTokens;
+  const displayQueries = isSecondaryActive ? secondaryQueries : primaryQueries;
 
   const parentRef = useRef<HTMLDivElement>(null);
   const savedPrimScroll = useRef(0);
@@ -1248,10 +1248,10 @@ function AppContent() {
   const wasPrimSearchActive = useRef(false);
   const wasSecSearchActive = useRef(false);
 
-  const prevPrimTokens = useRef<string[]>([]);
-  const prevSecTokens = useRef<string[]>([]);
-  const [ghostPrimTokens, setGhostPrimTokens] = useState<string[]>([]);
-  const [ghostSecTokens, setGhostSecTokens] = useState<string[]>([]);
+  const prevPrimQueries = useRef<string[]>([]);
+  const prevSecQueries = useRef<string[]>([]);
+  const [ghostPrimQueries, setGhostPrimQueries] = useState<string[]>([]);
+  const [ghostSecQueries, setGhostSecQueries] = useState<string[]>([]);
   const latestPrimFilteredIds = useRef<Set<string>>(new Set());
   const latestSecFilteredIds = useRef<Set<string>>(new Set());
   const [ghostPrimIds, setGhostPrimIds] = useState<Set<string>>(new Set());
@@ -1259,15 +1259,15 @@ function AppContent() {
 
   useEffect(() => {
     // Primary
-    if (searchTokens.length > 0 && !wasPrimSearchActive.current) {
-      prevPrimTokens.current = searchTokens;
-      setGhostPrimTokens([]);
+    if (primaryQueries.length > 0 && !wasPrimSearchActive.current) {
+      prevPrimQueries.current = primaryQueries;
+      setGhostPrimQueries([]);
       setGhostPrimIds(new Set());
       wasPrimSearchActive.current = true;
-    } else if (searchTokens.length === 0 && wasPrimSearchActive.current) {
+    } else if (primaryQueries.length === 0 && wasPrimSearchActive.current) {
       wasPrimSearchActive.current = false;
       if (localSettings.ghostHighlight) {
-        setGhostPrimTokens(prevPrimTokens.current);
+        setGhostPrimQueries(prevPrimQueries.current);
         setGhostPrimIds(latestPrimFilteredIds.current);
         setTimeout(() => {
           if (parentRef.current) parentRef.current.scrollTop = savedPrimScroll.current;
@@ -1276,30 +1276,30 @@ function AppContent() {
     }
 
     // Secondary
-    if (secondarySearchTokens.length > 0 && !wasSecSearchActive.current) {
-      prevSecTokens.current = secondarySearchTokens;
-      setGhostSecTokens([]);
+    if (secondaryQueries.length > 0 && !wasSecSearchActive.current) {
+      prevSecQueries.current = secondaryQueries;
+      setGhostSecQueries([]);
       setGhostSecIds(new Set());
       wasSecSearchActive.current = true;
-    } else if (secondarySearchTokens.length === 0 && wasSecSearchActive.current) {
+    } else if (secondaryQueries.length === 0 && wasSecSearchActive.current) {
       wasSecSearchActive.current = false;
       if (localSettings.ghostHighlight) {
-        setGhostSecTokens(prevSecTokens.current);
+        setGhostSecQueries(prevSecQueries.current);
         setGhostSecIds(latestSecFilteredIds.current);
         setTimeout(() => {
           if (parentRef.current) parentRef.current.scrollTop = savedSecScroll.current;
         }, 100);
       }
     }
-  }, [searchTokens.length, secondarySearchTokens.length]);
+  }, [primaryQueries.length, secondaryQueries.length]);
 
   useEffect(() => {
-    if (searchTokens.length > 0) latestPrimFilteredIds.current = new Set(filteredRows.map(r => String(r.id)));
-  }, [filteredRows, searchTokens.length]);
+    if (primaryQueries.length > 0) latestPrimFilteredIds.current = new Set(filteredRows.map(r => String(r.id)));
+  }, [filteredRows, primaryQueries.length]);
 
   useEffect(() => {
-    if (secondarySearchTokens.length > 0) latestSecFilteredIds.current = new Set(secondaryFilteredRows.map(r => String(r.id)));
-  }, [secondaryFilteredRows, secondarySearchTokens.length]);
+    if (secondaryQueries.length > 0) latestSecFilteredIds.current = new Set(secondaryFilteredRows.map(r => String(r.id)));
+  }, [secondaryFilteredRows, secondaryQueries.length]);
 
   const virtualizer = useVirtualizer({
     count: displayRows.length,
@@ -1308,7 +1308,7 @@ function AppContent() {
     overscan: 5,
   });
 
-  const renderTable = (config: PageConfig, rows: RowData[], tokens: string[], isSecondary: boolean, originalRows: RowData[], isGhost: boolean, ghostIds: Set<string>) => {
+  const renderTable = (config: PageConfig, rows: RowData[], queries: string[], isSecondary: boolean, originalRows: RowData[], isGhost: boolean, ghostIds: Set<string>) => {
     const activePage = isSecondary ? activeConfig.secondarySearchPage : state.activePage;
     const isTableSorted = config.columns.some(col => col.sortEnabled && col.sortPriority && col.sortPriority > 0);
     if (!config || !config.columns) {
@@ -1316,10 +1316,6 @@ function AppContent() {
         <div className="flex flex-col items-center justify-center p-20 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 m-4">
           <div className="text-4xl mb-4">⚠️</div>
           <h3 className="text-lg font-bold text-gray-700">Page Configuration Missing</h3>
-          <p className="text-gray-500 max-w-md">
-            The configuration for "{activePage}" was not found in the backup. 
-            Please add columns manually or check your JSON file.
-          </p>
         </div>
       );
     }
@@ -1329,31 +1325,39 @@ function AppContent() {
     const paddingBottom = virtualItems.length > 0 ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
     const colSpan = config.columns.length + (!isSecondary && config.rowReorderEnabled ? 1 : 0);
 
+    const colTokensMap: Record<string, string[]> = {};
+    config.columns.forEach(col => {
+        let tokens: string[] = [];
+        queries.forEach(query => {
+            const qLower = query.toLowerCase();
+            const colonIndex = qLower.indexOf(':');
+            if (colonIndex > 0) {
+                const prefix = qLower.substring(0, colonIndex).trim();
+                const suffix = qLower.substring(colonIndex + 1).trim();
+                if (col.name.toLowerCase().includes(prefix) || prefix.includes(col.name.toLowerCase())) {
+                    tokens.push(...suffix.split(/\s+/).filter(Boolean));
+                }
+            } else {
+                tokens.push(...qLower.split(/\s+/).filter(Boolean));
+            }
+        });
+        colTokensMap[col.key] = tokens;
+    });
+
     return (
       <div 
         className="flex-1 min-h-0 overflow-auto border-none rounded-none m-0 p-0 relative outline-none" 
         ref={parentRef}
         tabIndex={0}
         onKeyDown={(e) => {
-          // Do not intercept if user is typing in an input/textarea
           if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-          
-          if (e.key === 'Home') {
-            e.preventDefault();
-            virtualizer.scrollToIndex(0);
-          } else if (e.key === 'End') {
-            e.preventDefault();
-            virtualizer.scrollToIndex(rows.length - 1);
-          } else if (e.key === 'PageUp') {
-            e.preventDefault();
-            if (parentRef.current) parentRef.current.scrollTop -= parentRef.current.clientHeight;
-          } else if (e.key === 'PageDown') {
-            e.preventDefault();
-            if (parentRef.current) parentRef.current.scrollTop += parentRef.current.clientHeight;
-          }
+          if (e.key === 'Home') { e.preventDefault(); virtualizer.scrollToIndex(0); }
+          else if (e.key === 'End') { e.preventDefault(); virtualizer.scrollToIndex(rows.length - 1); }
+          else if (e.key === 'PageUp') { e.preventDefault(); if (parentRef.current) parentRef.current.scrollTop -= parentRef.current.clientHeight; }
+          else if (e.key === 'PageDown') { e.preventDefault(); if (parentRef.current) parentRef.current.scrollTop += parentRef.current.clientHeight; }
         }}
         onScroll={(e) => {
-          const isActualSearchEmpty = tokens.length === 0 || isGhost;
+          const isActualSearchEmpty = queries.length === 0 || isGhost;
           if (isSecondary) {
             if (isActualSearchEmpty) savedSecScroll.current = e.currentTarget.scrollTop;
           } else {
@@ -1417,7 +1421,7 @@ function AppContent() {
                 {rows.length === 0 ? (
                   <tr>
                     <td colSpan={colSpan} className="text-center text-[#90a4ae] font-normal p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0]">
-                      {tokens.length > 0 ? 'No rows match your search.' : 'No row data yet.'}
+                      {queries.length > 0 ? 'No rows match your search.' : 'No row data yet.'}
                     </td>
                   </tr>
                 ) : (
@@ -1430,10 +1434,10 @@ function AppContent() {
                     {virtualItems.map((virtualItem) => {
                       const rowIndex = virtualItem.index;
                       const row = rows[rowIndex];
-                      const rowTokens = (isGhost && !ghostIds.has(String(row.id))) ? [] : tokens;
+                      const isActiveRow = !(isGhost && !ghostIds.has(String(row.id)));
                       return (
                         // @ts-ignore
-                        <Draggable key={row.id} draggableId={`${isSecondary ? 'sec-' : ''}${row.id}`} index={rowIndex} isDragDisabled={isSecondary || !config.rowReorderEnabled || tokens.length > 0}>
+                        <Draggable key={row.id} draggableId={`${isSecondary ? 'sec-' : ''}${row.id}`} index={rowIndex} isDragDisabled={isSecondary || !config.rowReorderEnabled || queries.length > 0}>
                           {(provided, snapshot) => (
                         <tr 
                           ref={provided.innerRef}
@@ -1470,6 +1474,7 @@ function AppContent() {
                           {config.columns.map((col, colIndex) => {
                             const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
                             const hoverClass = 'data-[hovered-col=true]:bg-[#f0f7ff] data-[hovered-row=true]:bg-[#e8f0fe] data-[hovered-exact=true]:!bg-[#d2e3fc] data-[hovered-exact=true]:outline data-[hovered-exact=true]:outline-[3px] data-[hovered-exact=true]:outline-[#2b579a] data-[hovered-exact=true]:relative data-[hovered-exact=true]:z-10 data-[hovered-exact=true]:shadow-inner';
+                            const colTokens = isActiveRow ? (colTokensMap[col.key] || []) : [];
                             
                             const commonProps = {
                               style: widthStyle
@@ -1561,7 +1566,7 @@ function AppContent() {
                                         const hasHtml = /<[a-z][\s\S]*>/i.test(displayText);
                                         return (
                                           <div key={i} className={`flex items-center justify-between gap-1.5 border border-[#d7e3f6] bg-[#f9fcff] rounded px-1.5 py-0.5 min-h-[25px] ${hideButton ? 'bg-gray-50 border-gray-100 opacity-80' : ''}`}>
-                                            {hasHtml ? <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightHtmlText(displayText, rowTokens, isGhost) }} /> : <span className="whitespace-pre-wrap">{highlightText(displayText, rowTokens, isGhost)}</span>}
+                                            {hasHtml ? <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightHtmlText(displayText, colTokens, isGhost) }} /> : <span className="whitespace-pre-wrap">{highlightText(displayText, colTokens, isGhost)}</span>}
                                             {!hideButton && (
                                               <>
                                                 <button 
@@ -1609,7 +1614,7 @@ function AppContent() {
                                     const hasHtml = /<[a-z][\s\S]*>/i.test(strVal);
                                     return (
                                       <React.Fragment key={i}>
-                                        {hasHtml ? <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightHtmlText(strVal, rowTokens, isGhost) }} /> : <span className="whitespace-pre-wrap">{highlightText(strVal, rowTokens, isGhost)}</span>}
+                                        {hasHtml ? <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightHtmlText(strVal, colTokens, isGhost) }} /> : <span className="whitespace-pre-wrap">{highlightText(strVal, colTokens, isGhost)}</span>}
                                         <br/>
                                       </React.Fragment>
                                     );
@@ -1623,7 +1628,7 @@ function AppContent() {
 
                             return (
                               <td key={col.key} {...commonProps} className={`p-1.5 border-r-[length:medium] border-b-[length:medium] border-[#e0e0e0] ${hoverClass} overflow-hidden whitespace-pre-wrap`}>
-                                {hasHtmlRaw ? <span dangerouslySetInnerHTML={{ __html: highlightHtmlText(strRawVal, rowTokens, isGhost) }} /> : highlightText(rawVal, rowTokens, isGhost)}
+                                {hasHtmlRaw ? <span dangerouslySetInnerHTML={{ __html: highlightHtmlText(strRawVal, colTokens, isGhost) }} /> : highlightText(rawVal, colTokens, isGhost)}
                               </td>
                             );
                           })}
@@ -1657,11 +1662,11 @@ function AppContent() {
         </div>
       )}
       {(() => {
-        const isGhostActive = displayTokens.length === 0 && (isSecondaryActive ? ghostSecTokens.length > 0 : ghostPrimTokens.length > 0);
-        const finalTokens = displayTokens.length > 0 ? displayTokens : (isSecondaryActive ? ghostSecTokens : ghostPrimTokens);
+        const isGhostActive = displayQueries.length === 0 && (isSecondaryActive ? ghostSecQueries.length > 0 : ghostPrimQueries.length > 0);
+        const finalQueries = displayQueries.length > 0 ? displayQueries : (isSecondaryActive ? ghostSecQueries : ghostPrimQueries);
         const originalRows = isSecondaryActive ? (state.pageRows[activeConfig.secondarySearchPage!] || []) : activeRows;
         const ghostIds = isSecondaryActive ? ghostSecIds : ghostPrimIds;
-        return renderTable(displayConfig, displayRows, finalTokens, isSecondaryActive, originalRows, isGhostActive, ghostIds);
+        return renderTable(displayConfig, displayRows, finalQueries, isSecondaryActive, originalRows, isGhostActive, ghostIds);
       })()}
     </div>
   );
